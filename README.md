@@ -4,7 +4,7 @@
 
 ![Панель Sound](docs/panel.png)
 
-[Скачать предварительную сборку для Apple Silicon](https://github.com/nnsmbd/sound/releases/latest) · [Результаты проверок](docs/verification.md)
+[Скачать предварительную сборку для Apple Silicon](https://github.com/nnsmbd/sound/releases/tag/v0.1.0) · [Результаты проверок](docs/verification.md)
 
 > Первая экспериментальная версия: не нотарифицирована. Реальная регулировка Telegram проверена; полный набор устройств и сценариев восстановления ещё не испытан.
 
