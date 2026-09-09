@@ -57,7 +57,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             audio.onChange = { [weak self] snapshot in self?.view.render(snapshot) }
             audio.start()
         }
-        if CommandLine.arguments.contains("--show") || preview { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.view.toggle() } }
+        if CommandLine.arguments.contains("--show") || preview { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.view.showFromLauncher() } }
     }
     private func changePreview(_ key: String, value: Int?) {
         guard let index = previewRows.firstIndex(where: { $0.source.key == key }) else { return }
@@ -67,7 +67,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func renderPreview() { view.render(MixerSnapshot(rows: previewRows, output: "Динамики MacBook Pro", error: nil)) }
     @objc private func toggle() { view.toggle() }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !view.panel.isVisible { view.toggle() }
+        view.showFromLauncher()
         return true
     }
     func applicationWillTerminate(_ notification: Notification) {

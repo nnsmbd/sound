@@ -83,6 +83,7 @@ final class MixerPanelController: NSObject {
     var onReset: (() -> Void)?
     var anchor: (() -> NSPoint?)?
     let preview: Bool
+    private var launcherScreen: NSScreen?
     init(preview: Bool) {
         self.preview = preview
         panel = MixerPanel(contentRect: NSRect(x: 0, y: 0, width: 224, height: 230), styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
@@ -146,13 +147,24 @@ final class MixerPanelController: NSObject {
         if panel.isVisible { position() }
     }
     func position() {
+        if let screen = launcherScreen {
+            let frame = screen.visibleFrame
+            panel.setFrameOrigin(NSPoint(x: frame.midX - panel.frame.width / 2, y: frame.midY - panel.frame.height / 2))
+            return
+        }
         guard let p = anchor?() else { return }
         let screen = NSScreen.screens.first { $0.frame.contains(p) } ?? NSScreen.main
         let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let x = min(max(p.x - panel.frame.width / 2, visible.minX + 8), visible.maxX - panel.frame.width - 8)
         panel.setFrameOrigin(NSPoint(x: x, y: p.y - panel.frame.height - 7))
     }
-    func toggle() { if panel.isVisible { panel.orderOut(nil) } else { position(); panel.makeKeyAndOrderFront(nil) } }
+    func toggle() { launcherScreen = nil; if panel.isVisible { panel.orderOut(nil) } else { position(); panel.makeKeyAndOrderFront(nil) } }
+    func showFromLauncher() {
+        launcherScreen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        position()
+        NSApp.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+    }
     @objc private func settings() {
         let menu = NSMenu()
         let reset = menu.addItem(withTitle: "Вернуть исходную громкость", action: #selector(resetAll), keyEquivalent: ""); reset.target = self

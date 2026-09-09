@@ -79,7 +79,8 @@ enum SourceDiscovery {
             if let path = url?.path, let range = path.range(of: ".app/") { url = URL(fileURLWithPath: String(path[...range.lowerBound]) + "app") }
             let bundle = url.flatMap(Bundle.init(url:))
             let key = url?.path ?? (bundleID.isEmpty ? "pid:\(pid)" : bundleID)
-            let name = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String) ?? app?.localizedName ?? (bundleID.isEmpty ? "Процесс \(pid)" : bundleID)
+            let discoveredName = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String) ?? (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String) ?? app?.localizedName ?? (bundleID.isEmpty ? "Процесс \(pid)" : bundleID)
+            let name = discoveredName == "systemsoundserverd" || bundleID == "systemsoundserverd" ? "Системные звуки" : discoveredName
             let playing = ((try? HAL.scalar(id, kAudioProcessPropertyIsRunningOutput, initial: UInt32(0))) ?? 0) != 0
             if var existing = groups[key] { existing.processes.append(id); existing.playing = existing.playing || playing; groups[key] = existing }
             else { groups[key] = AudioSource(key: key, name: name, url: url, processes: [id], playing: playing) }
