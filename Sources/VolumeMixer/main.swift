@@ -11,11 +11,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var previewRows: [MixerRowState] = []
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "slider.horizontal.3", accessibilityDescription: "Громкость приложений")
+        item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.autosaveName = "SoundMenuBar"
+        item.isVisible = true
+        item.button?.image = NSImage(systemSymbolName: "speaker.wave.2.fill", accessibilityDescription: "Громкость приложений")
         item.button?.image?.isTemplate = true
+        item.button?.image?.size = NSSize(width: 16, height: 16)
+        item.button?.title = " Sound"
+        item.button?.imagePosition = .imageLeading
         item.button?.toolTip = "Громкость приложений"
         item.button?.target = self; item.button?.action = #selector(toggle)
+        if let index = CommandLine.arguments.firstIndex(of: "--status-diagnostics"), CommandLine.arguments.count > index + 1 {
+            let destination = CommandLine.arguments[index + 1]
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                let value = "visible=\(self.item.isVisible) image=\(self.item.button?.image != nil) button=\(String(describing: self.item.button?.frame)) window=\(String(describing: self.item.button?.window?.frame)) screens=\(NSScreen.screens.map { "\($0.localizedName):\($0.frame)" })"
+                try? value.write(toFile: destination, atomically: true, encoding: .utf8)
+            }
+        }
         view = MixerPanelController(preview: preview)
         view.anchor = { [weak self] in
             guard let button = self?.item.button, let window = button.window else { return nil }
