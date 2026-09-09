@@ -10,6 +10,8 @@ struct MixerSnapshot {
     var rows: [MixerRowState]
     var output: String
     var error: String?
+    var devices: [OutputDevice] = []
+    var selectedUID: String? = nil
 }
 final class AudioCoordinator {
     private let queue = DispatchQueue(label: "dev.samir.VolumeMixer.audio", qos: .userInitiated)
@@ -21,6 +23,16 @@ final class AudioCoordinator {
     private var error: String?
     private var suspended = false
     var onChange: ((MixerSnapshot) -> Void)?
+    func selectOutput(_ uid: String) {
+        queue.async {
+            guard !self.suspended else { return }
+            // Stop reading taps before switching hardware; preserve requested gains for the new routes.
+            self.routes.values.forEach { $0.stop() }; self.routes.removeAll()
+            do { try HAL.selectOutput(uid: uid); self.error = nil }
+            catch { self.error = error.localizedDescription }
+            self.refresh()
+        }
+    }
     func start() {
         queue.async {
             let timer = DispatchSource.makeTimerSource(queue: self.queue)
@@ -83,7 +95,7 @@ final class AudioCoordinator {
     func resume() { queue.async { self.suspended = false; self.refresh() } }
     func shutdown() { queue.sync { timer?.cancel(); timer = nil; routes.values.forEach { $0.stop() }; routes.removeAll() } }
     private func publish() {
-        let snapshot = MixerSnapshot(rows: order.compactMap { rows[$0] }, output: output?.name ?? "Нет устройства вывода", error: error)
+        let snapshot = MixerSnapshot(rows: order.compactMap { rows[$0] }, output: output?.name ?? "Нет устройства вывода", error: error, devices: (try? HAL.outputs()) ?? [], selectedUID: output?.uid)
         DispatchQueue.main.async { [weak self] in self?.onChange?(snapshot) }
     }
 }

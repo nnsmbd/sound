@@ -9,3 +9,7 @@
 - Not verified: simultaneous live sources isolation, physical loopback/no double sound, perceptual latency, Bluetooth changes, sleep/wake, crash/hang recovery, four-row visual QA at final size, Intel, older macOS and notarized distribution.
 
 This is a prerelease for local testing, not a claim of universal device support or release-quality audio reliability.
+
+## 0.2.0 — переключение выхода
+
+Проверено на Mac пользователя: выбор в панели меняет системный выход с MCHOSE G9 Pro на динамики MacBook Air и обратно; результат независимо прочитан через Core Audio. Исходный MCHOSE восстановлен. В списке также отображается DELL S2421HGF; физическое воспроизведение на нём и переподключение Bluetooth не проверены. Сборка release и 4 DSP-теста прошли. Видимость значка menu bar пока не подтверждена пользователем.

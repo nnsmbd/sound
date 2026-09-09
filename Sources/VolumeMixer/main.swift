@@ -21,14 +21,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         item.button?.imagePosition = .imageLeading
         item.button?.toolTip = "Громкость приложений"
         item.button?.target = self; item.button?.action = #selector(toggle)
-        if let index = CommandLine.arguments.firstIndex(of: "--status-diagnostics"), CommandLine.arguments.count > index + 1 {
-            let destination = CommandLine.arguments[index + 1]
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                let value = "visible=\(self.item.isVisible) image=\(self.item.button?.image != nil) button=\(String(describing: self.item.button?.frame)) window=\(String(describing: self.item.button?.window?.frame)) screens=\(NSScreen.screens.map { "\($0.localizedName):\($0.frame)" })"
-                try? value.write(toFile: destination, atomically: true, encoding: .utf8)
-            }
-        }
         view = MixerPanelController(preview: preview)
+        view.onOutput = { [weak self] uid in self?.audio.selectOutput(uid) }
         view.anchor = { [weak self] in
             guard let button = self?.item.button, let window = button.window else { return nil }
             let rect = window.convertToScreen(button.convert(button.bounds, to: nil))
@@ -50,11 +44,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             else { self.audio.resetAll() }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .keyDown]) { [weak self] event in
+            if self?.view.isTrackingMenu == true { return event }
             if event.type == .keyDown && event.keyCode == 53 { self?.view.panel.orderOut(nil); return nil }
             if event.type != .keyDown && event.window != self?.view.panel && event.window != self?.item.button?.window { self?.view.panel.orderOut(nil) }
             return event
         }
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in self?.view.panel.orderOut(nil) }
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in if self?.view.isTrackingMenu != true { self?.view.panel.orderOut(nil) } }
         let center = NSWorkspace.shared.notificationCenter
         observers.append(center.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.audio.suspend() })
         observers.append(center.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.audio.resume() })
@@ -90,7 +85,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-if CommandLine.arguments.contains("--diagnose") {
+if CommandLine.arguments.contains("--test-output-switch") {
+    do {
+        let original = try HAL.output()
+        guard let other = try HAL.outputs().first(where: { $0.uid != original.uid }) else { throw AudioFailure(message: "Для проверки нужны два выхода") }
+        defer { do { try HAL.selectOutput(uid: original.uid); print("RESTORED: \(try HAL.output().name)") } catch { fputs("RESTORE FAILED: \(error)\n", stderr) } }
+        print("BEFORE: \(original.name)")
+        try HAL.selectOutput(uid: other.uid)
+        RunLoop.current.run(until: Date().addingTimeInterval(2))
+        guard try HAL.output().uid == other.uid else { throw AudioFailure(message: "Выход не сохранился") }
+        print("SWITCH VERIFIED: \(try HAL.output().name)")
+    } catch { fputs("\(error.localizedDescription)\n", stderr); exit(1) }
+} else if CommandLine.arguments.contains("--diagnose") {
     do {
         let output = try HAL.output()
         print("Output: \(output.name) · \(output.rate) Hz")

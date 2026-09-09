@@ -65,11 +65,20 @@ final class AppVolumeRow: NSView {
     @objc private func mutePressed() { onMute?() }
 }
 
-final class MixerPanelController: NSObject {
+final class MixerPanelController: NSObject, NSMenuDelegate {
+    private(set) var isTrackingMenu = false
+    func menuWillOpen(_ menu: NSMenu) { isTrackingMenu = true }
+    func menuDidClose(_ menu: NSMenu) { isTrackingMenu = false }
     let panel: MixerPanel
     private let content = FlippedView()
     private let titleLabel = text("Громкость", size: 14, weight: .semibold)
     private let outputLabel = text("", size: 11, color: .secondaryLabelColor)
+    private let outputPicker = NSButton(title: "", target: nil, action: nil)
+    private var expandedOutputs = false
+    private var lastSnapshot: MixerSnapshot?
+    private var deviceButtons: [NSButton] = []
+    private var deviceUIDs: [String] = []
+    var onOutput: ((String) -> Void)?
     private let outputIcon = NSImageView(image: NSImage(systemSymbolName: "hifispeaker", accessibilityDescription: nil)!)
     private let message = NSTextField(wrappingLabelWithString: "")
     private let scroll = NSScrollView()
@@ -108,9 +117,17 @@ final class MixerPanelController: NSObject {
         divider.boxType = .separator
         [titleLabel, gear, scroll, message, divider, outputIcon, outputLabel].forEach(content.addSubview)
         outputLabel.setAccessibilityLabel("Устройство вывода")
+        outputLabel.isHidden = true
+        outputPicker.isBordered = false
+        outputPicker.font = .systemFont(ofSize: 11)
+        outputPicker.target = self; outputPicker.action = #selector(toggleOutputs)
+        outputPicker.setAccessibilityLabel("Устройство вывода звука")
+        content.addSubview(outputPicker)
         if preview { titleLabel.stringValue = "Громкость · макет" }
     }
     func render(_ snapshot: MixerSnapshot) {
+        guard !isTrackingMenu else { return }
+        lastSnapshot = snapshot
         let keys = snapshot.rows.map { $0.source.key }
         for key in lastKeys where !keys.contains(key) { rows.removeValue(forKey: key)?.removeFromSuperview() }
         for (index, state) in snapshot.rows.enumerated() {
@@ -129,7 +146,9 @@ final class MixerPanelController: NSObject {
         message.stringValue = messageText
         message.textColor = snapshot.error == nil ? .secondaryLabelColor : .systemOrange
         let messageHeight = messageText.isEmpty ? 0 : (empty ? 80 : 64)
-        let height = CGFloat(44 + listHeight + messageHeight + 38)
+        let extraHeight = expandedOutputs ? snapshot.devices.count * 30 : 0
+        let height = CGFloat(44 + listHeight + messageHeight + 38 + extraHeight)
+        let footer = height - CGFloat(extraHeight)
         let oldTop = panel.frame.maxY
         panel.setContentSize(NSSize(width: 224, height: height))
         panel.setFrameOrigin(NSPoint(x: panel.frame.minX, y: oldTop - height))
@@ -139,11 +158,36 @@ final class MixerPanelController: NSObject {
         scroll.frame = NSRect(x: 12, y: 40, width: 202, height: listHeight)
         rowContainer.frame = NSRect(x: 0, y: 0, width: 200, height: snapshot.rows.count * 50)
         message.frame = NSRect(x: 12, y: 44 + listHeight, width: 200, height: messageHeight)
-        divider.frame = NSRect(x: 12, y: height - 37, width: 200, height: 1)
-        outputIcon.frame = NSRect(x: 12, y: height - 27, width: 18, height: 18)
-        outputLabel.frame = NSRect(x: 36, y: height - 27, width: 170, height: 20)
+        divider.frame = NSRect(x: 12, y: footer - 37, width: 200, height: 1)
+        outputIcon.frame = NSRect(x: 12, y: footer - 27, width: 18, height: 18)
+        outputLabel.frame = NSRect(x: 36, y: footer - 27, width: 170, height: 20)
         outputLabel.stringValue = snapshot.output
         outputLabel.toolTip = snapshot.output
+        outputPicker.frame = NSRect(x: 34, y: footer - 30, width: 178, height: 26)
+        deviceUIDs = snapshot.devices.map(\.uid)
+        outputPicker.title = snapshot.output + (expandedOutputs ? "  ▴" : "  ▾")
+        outputPicker.alignment = .left
+        outputPicker.lineBreakMode = .byTruncatingTail
+        outputPicker.isEnabled = !deviceUIDs.isEmpty && !preview
+        let buttonCount = expandedOutputs ? snapshot.devices.count : 0
+        while deviceButtons.count > buttonCount { deviceButtons.removeLast().removeFromSuperview() }
+        while deviceButtons.count < buttonCount {
+            let button = NSButton(title: "", target: self, action: #selector(deviceChosen(_:)))
+            content.addSubview(button); deviceButtons.append(button)
+        }
+        if expandedOutputs {
+            for (index, device) in snapshot.devices.enumerated() {
+                let button = deviceButtons[index]
+                button.title = device.name
+                button.tag = index; button.isBordered = false; button.alignment = .left
+                button.font = .systemFont(ofSize: 11)
+                button.image = NSImage(systemSymbolName: device.uid == snapshot.selectedUID ? "checkmark.circle.fill" : "circle", accessibilityDescription: nil)
+                button.imagePosition = .imageLeading
+                button.frame = NSRect(x: 12, y: footer - 1 + CGFloat(index * 30), width: 200, height: 28)
+                button.setAccessibilityLabel("Выбрать выход: \(device.name)")
+            }
+        }
+        outputPicker.toolTip = "Выход звука: \(snapshot.output)"
         if panel.isVisible { position() }
     }
     func position() {
@@ -167,17 +211,29 @@ final class MixerPanelController: NSObject {
     }
     @objc private func settings() {
         let menu = NSMenu()
+        menu.delegate = self
         let reset = menu.addItem(withTitle: "Вернуть исходную громкость", action: #selector(resetAll), keyEquivalent: ""); reset.target = self
         let permission = menu.addItem(withTitle: "Доступ к системному аудио…", action: #selector(permissions), keyEquivalent: ""); permission.target = self
         menu.addItem(.separator())
         let about = menu.addItem(withTitle: "О программе…", action: #selector(aboutApp), keyEquivalent: ""); about.target = self
-        menu.addItem(withTitle: "Завершить VolumeMixer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: "Завершить Sound", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: gear.bounds.maxY + 5), in: gear)
+    }
+    @objc private func toggleOutputs() {
+        expandedOutputs.toggle()
+        if let snapshot = lastSnapshot { render(snapshot) }
+    }
+    @objc private func deviceChosen(_ sender: NSButton) {
+        guard deviceUIDs.indices.contains(sender.tag) else { return }
+        let uid = deviceUIDs[sender.tag]
+        expandedOutputs = false
+        onOutput?(uid)
+        if let snapshot = lastSnapshot { render(snapshot) }
     }
     @objc private func resetAll() { onReset?() }
     @objc private func permissions() { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!) }
     @objc private func aboutApp() {
-        let alert = NSAlert(); alert.messageText = "VolumeMixer"
+        let alert = NSAlert(); alert.messageText = "Sound"
         alert.informativeText = "Независимая громкость приложений.\n\nЗвук обрабатывается только в памяти: без записи и отправки. macOS запросит доступ к системному аудио при первой регулировке.\n\n100% — исходный уровень приложения. Первая версия поддерживает стереовыход."
         alert.runModal()
     }

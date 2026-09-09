@@ -10,6 +10,21 @@ func checked(_ status: OSStatus, _ operation: String) throws {
     guard status == noErr else { throw AudioFailure(message: "\(operation): \(status)") }
 }
 enum HAL {
+    static func outputs() throws -> [OutputDevice] {
+        try ids(system, kAudioHardwarePropertyDevices).compactMap { id in
+            guard let uid = try? string(id, kAudioDevicePropertyDeviceUID), !uid.hasPrefix("dev.samir.VolumeMixer."),
+                  let streams = try? ids(id, kAudioDevicePropertyStreams, scope: kAudioObjectPropertyScopeOutput), !streams.isEmpty,
+                  let name = try? string(id, kAudioObjectPropertyName),
+                  let rate = try? scalar(id, kAudioDevicePropertyNominalSampleRate, initial: Double(0)) else { return nil }
+            return OutputDevice(id: id, uid: uid, name: name, rate: rate)
+        }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
+    static func selectOutput(uid: String) throws {
+        guard let device = try outputs().first(where: { $0.uid == uid }) else { throw AudioFailure(message: "Устройство отключено. Выберите другой выход.") }
+        var id = device.id, a = address(kAudioHardwarePropertyDefaultOutputDevice)
+        try checked(AudioObjectSetPropertyData(system, &a, 0, nil, UInt32(MemoryLayout<AudioObjectID>.size), &id), "Переключение выхода")
+        guard try output().uid == uid else { throw AudioFailure(message: "macOS не подтвердила переключение выхода") }
+    }
     static let system = AudioObjectID(kAudioObjectSystemObject)
     static func address(_ selector: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: kAudioObjectPropertyElementMain)
